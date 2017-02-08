@@ -151,6 +151,9 @@ struct QDPLLApp
     FILE *in;
     int pretty_print;
     int qdimacs_output;
+/*@COUNT {*/
+    int count_output;
+/*}*/
     int deps_only;
     int print_deps;
     int dump_dep_graph;
@@ -398,6 +401,12 @@ parse_cmd_line_options (QDPLLApp * app, QDPLL * qdpll, int argc, char **argv)
         {
           app->options.qdimacs_output = 1;
         }
+/*@COUNT{*/
+      else if (!strcmp (opt_str, "--qdc"))
+        {
+          app->options.count_output = 1;
+        }
+/*}*/
       else if (!strcmp (opt_str, "--deps-only"))
         {
           app->options.deps_only = 1;
@@ -587,6 +596,15 @@ qdpll_main (int argc, char **argv)
   check_options (&app);
   set_signal_handlers (&app);
 
+/* @COUNTING {*/
+  if (app.options.count_output)
+  {
+    qdpll_configure(qdpll, "--dep-man=simple");
+    qdpll_configure(qdpll, "--incremental-use");
+
+  }
+/* }*/ 
+
   if (app.options.print_usage)
     {
       print_usage ();
@@ -623,7 +641,27 @@ qdpll_main (int argc, char **argv)
     }
   else
     {
-        result = qdpll_sat (qdpll);
+	/* @COUNTING { */
+    	unsigned int cnt = 0;
+	do
+	{
+		result = qdpll_sat (qdpll);
+		if (!app.options.count_output)
+			break;
+		else if (result == QDPLL_RESULT_SAT)
+		{
+			++cnt;
+			if (app.options.qdimacs_output)
+	  			print_result_message (&app, qdpll, result, stdout);
+			qdpll_new_count_iteration(qdpll);
+		}
+	}
+	while (result == QDPLL_RESULT_SAT);
+	if (app.options.count_output) {
+		fprintf(stdout, "c #SAT assignments: %d\n", cnt);
+		result = QDPLL_RESULT_SAT;
+	}
+	/* } */
 #if (COMPUTE_STATS || COMPUTE_TIMES)
         qdpll_print_stats (qdpll);
 #endif
@@ -634,8 +672,10 @@ qdpll_main (int argc, char **argv)
   else if (app.options.trace == TRACE_BQRP)
     fprintf (stdout, "%cr ", 0);
 
+/* @COUNTING {*/
+if (!app.options.count_output)
   print_result_message (&app, qdpll, result, stdout);
-
+//*}*/
   cleanup (qdpll, &app);
 
   return result;
