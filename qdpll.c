@@ -17668,6 +17668,125 @@ qdpll_print (QDPLL * qdpll, FILE * out)
     }
 }
 
+/* Print QDIMACS-compliant output to stdout as defined at:
+   http://www.qbflib.org/qdimacs.html */
+void
+qdpll_new_count_iteration (QDPLL * qdpll)
+{
+  QDPLL_ABORT_QDPLL (!qdpll, "pointer to solver object is null!");
+  /* NOTE: here we print the largest declared variable ID and the
+     number of used original clauses. This might differ from the preamble
+     of the original input file if that file was not strictly QDIMACS
+     compliant or if clauses were removed. */
+  const QDPLLResult result = qdpll->result;
+  char *res_string;
+  if (result == QDPLL_RESULT_UNKNOWN)
+    res_string = "-1";
+  else if (result == QDPLL_RESULT_SAT)
+    res_string = "1";
+  else if (result == QDPLL_RESULT_UNSAT)
+    res_string = "0";
+  else
+    QDPLL_ABORT_QDPLL (1, "invalid result!");
+
+  /*fprintf (stdout, "s cnf %s %d %d\n", res_string,
+           qdpll->pcnf.max_declared_user_var_id, qdpll->pcnf.clauses.cnt);*/
+
+  Scope *outer;
+  assert (qdpll->pcnf.scopes.first);
+  if (!qdpll->pcnf.user_scopes.first)
+    {
+      /* Formula is propositional; when unsatisfiable then cannot print
+         countermodel. */
+      if (result == QDPLL_RESULT_UNSAT)
+        return;
+      else
+        outer = qdpll->pcnf.scopes.first;
+    }
+  else
+    {
+      if (result == QDPLL_RESULT_UNSAT)
+        {
+          /* Formula is unsatisfiable; cannot print countermodel if the
+             outermost scope is existential or if the formula contains free
+             variables, which by default are quantified existentially and
+             leftmost. */
+          if (qdpll->pcnf.user_scopes.first->type == QDPLL_QTYPE_EXISTS || 
+              has_scope_free_user_var (qdpll, qdpll->pcnf.scopes.first))
+            return;
+          else
+            outer = qdpll->pcnf.user_scopes.first;
+        }
+      else
+        {
+          assert (result == QDPLL_RESULT_SAT);
+          /* Formula is satisfiable; cannot print countermodel if the
+             outermost scope is universal AND if the formula DOES NOT contain free
+             variables. */
+          if (qdpll->pcnf.user_scopes.first->type == QDPLL_QTYPE_FORALL && 
+              !has_scope_free_user_var (qdpll, qdpll->pcnf.scopes.first))
+            return;
+          else
+            {
+              outer = qdpll->pcnf.scopes.first;
+              if (QDPLL_COUNT_STACK(qdpll->pcnf.scopes.first->vars) == 0)
+                {
+                  assert (outer->link.next);
+                  assert (outer->link.next->type == outer->type);
+                  outer = outer->link.next;
+                }
+            }
+        }
+    }
+
+
+  Var *vars = qdpll->pcnf.vars;
+  VarID *p, *e;
+
+  unsigned int cnt = 0;
+  for (p = outer->vars.start, e = outer->vars.top; p < e; p++)
+  {
+      assert (*p);
+      VarID id = *p;
+      Var *var = VARID2VARPTR (vars, id);
+      assert (!var->id || var->id == id);
+      QDPLLAssignment a;
+
+      if ((!var->is_internal && id <= qdpll_get_max_declared_var_id (qdpll)) && 
+          (a = qdpll_get_value (qdpll, id)) != QDPLL_ASSIGNMENT_UNDEF)
+      	++cnt;
+  }
+  VarID *newClause = malloc(sizeof(VarID) * (1 +cnt));
+  cnt = 0;
+  for (p = outer->vars.start, e = outer->vars.top; p < e; p++)
+    {
+      assert (*p);
+      VarID id = *p;
+      Var *var = VARID2VARPTR (vars, id);
+      assert (!var->id || var->id == id);
+      QDPLLAssignment a;
+      /* FIX: Do not print assignments of internal variables, ignore also
+         reset internal variables. */
+      if ((!var->is_internal && id <= qdpll_get_max_declared_var_id (qdpll)) && 
+          (a = qdpll_get_value (qdpll, id)) != QDPLL_ASSIGNMENT_UNDEF)
+      {
+      	newClause[cnt++] = (a == QDPLL_ASSIGNMENT_FALSE ? id : -id);
+      }
+        /*fprintf (stdout, "V %d 0\n", 
+              a == QDPLL_ASSIGNMENT_FALSE ? -id : id);*/
+    }
+  newClause[cnt] = 0;
+
+  qdpll_reset(qdpll);
+  for (cnt = 0; newClause[cnt]; cnt++)
+    qdpll_add(qdpll, newClause[cnt]);
+    
+  free(newClause);
+
+  qdpll_add(qdpll, 0);
+
+    //qdpll_print (qdpll, stdout);
+}
 
 /* Print QDIMACS-compliant output to stdout as defined at:
    http://www.qbflib.org/qdimacs.html */

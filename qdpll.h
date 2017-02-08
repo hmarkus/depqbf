@@ -253,6 +253,12 @@ QDPLLAssignment qdpll_get_value (QDPLL * qdpll, VarID id);
 /* Print QBF to 'out' using QDIMACS format. */
 void qdpll_print (QDPLL * qdpll, FILE * out);
 
+
+/* Starts a new iteration for counting SAT assignments */
+   void
+   qdpll_new_count_iteration (QDPLL * qdpll);
+
+
 /* Print QDIMACS-compliant output. */
 void qdpll_print_qdimacs_output (QDPLL * qdpll);
 
